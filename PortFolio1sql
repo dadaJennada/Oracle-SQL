@@ -1,0 +1,117 @@
+select * from coviddeaths;
+select * from covidvaccinations;
+
+--select required data
+select location,dates,total_cases,new_cases,total_deaths,population
+from coviddeaths;
+
+
+--total cases vs total deaths
+select location,dates,total_cases,total_deaths,(total_deaths/total_cases)*100 death_percentage
+from coviddeaths where lower(location) like 'india';
+
+--population VS total_cases
+select location,dates,population,total_cases,(total_cases/population)*100 covid_percentage
+from coviddeaths where lower(location)='india';
+
+-- looking at highest infection rate compares to population
+select location,population,max(total_cases) HighestInfectionCount,
+round((max(total_cases)/population)*100,5)  PercentPopulationInfected
+from coviddeaths
+group by location,population order by 4 desc;
+
+--Showing countries with highest death count per population
+select location,max(total_deaths) TotalDeathCount
+from coviddeaths 
+where continent is not null
+group by location
+order by 1;
+
+--LET'S BREAK DOWN THOING TO CONTINENT
+
+select location,max(total_deaths) totalDeathCount from coviddeaths
+where continent is NULL 
+--and location in ('Asia', 'Africa', 'North America', 'South America', 'Antarctica', 'Europe', 'Australia')
+group by location
+order by 2 desc;
+
+
+--showing continents with highest death count per population.
+select continent,max(total_deaths) totalDeathCount from coviddeaths
+where continent is not NULL
+group by continent
+order by 2 desc;
+
+
+--select continent,sum(totalDeathCount) deathCount from
+--(select continent,location,max(total_deaths) totalDeathCount from coviddeaths
+--where continent is not null
+--group by continent,location
+--order by 1)
+--group by continent order by 1;
+
+--GLOBAL NUMBERS
+select dates, sum(new_cases), sum(new_deaths), (sum(new_deaths)/sum(new_cases))*100 deathPercentage
+from coviddeaths 
+where continent is not null
+group by dates
+having sum(new_cases)!=0
+order by 1,2;
+
+
+--Looking at total population VS Vaccinations
+select dea.continent,dea.location,dea.dates,dea.population,vac.new_vaccinations,
+sum(vac.new_vaccinations) 
+over(partition by dea.location order by dea.location,dea.dates) rollingPeopleVaccinations
+from coviddeaths dea join covidvaccinations vac
+on dea.location=vac.location and dea.dates=vac.dates
+where dea.continent is not null
+order by 2,3;
+
+--CTE
+with PopVsVac(continent,location,dates,population,newVaccinations,rollingPeopleVaccinations)
+as 
+(
+select dea.continent,dea.location,dea.dates,dea.population,vac.new_vaccinations,
+sum(vac.new_vaccinations) 
+over(partition by dea.location order by dea.location,dea.dates) rollingPeopleVaccinations
+from coviddeaths dea join covidvaccinations vac
+on dea.location=vac.location and dea.dates=vac.dates
+where dea.continent is not null
+--order by 2,3
+)
+select continent,location,dates,population,newVaccinations,rollingPeopleVaccinations,
+(rollingPeopleVaccinations/population)*100
+from PopVsVac;
+
+--Temparay Table
+create global temporary table PercentPopulationVaccinated
+(
+continent varchar(225),
+location varchar(225),
+dates date,
+population number,
+newVaccinations number,
+rollingPeopleVaccinated number
+);
+insert into PercentPopulationVaccinated
+select dea.continent,dea.location,dea.dates,dea.population,vac.new_vaccinations,
+sum(vac.new_vaccinations) 
+over(partition by dea.location order by dea.location,dea.dates) rollingPeopleVaccinations
+from coviddeaths dea join covidvaccinations vac
+on dea.location=vac.location and dea.dates=vac.dates
+where dea.continent is not null;
+
+select continent,location,dates,population,rollingPeopleVaccinated,(rollingPeopleVaccinated/population)*100
+from PercentPopulationVaccinated;
+
+--creting a view
+create view PercentPopulationVacciView as
+select dea.continent,dea.location,dea.dates,dea.population,vac.new_vaccinations,
+sum(vac.new_vaccinations) 
+over(partition by dea.location order by dea.location,dea.dates) rollingPeopleVaccinations
+from coviddeaths dea join covidvaccinations vac
+on dea.location=vac.location and dea.dates=vac.dates
+where dea.continent is not null;
+
+select * from PercentPopulationVacciView;
